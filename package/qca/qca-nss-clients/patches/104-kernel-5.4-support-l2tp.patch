@@ -1,0 +1,247 @@
+--- a/l2tp/l2tpv2/nss_connmgr_l2tpv2.c
++++ b/l2tp/l2tpv2/nss_connmgr_l2tpv2.c
+@@ -33,6 +33,7 @@
+ #include <linux/if_arp.h>
+ #include <linux/version.h>
+ #include <net/route.h>
++#include <linux/refcount.h>
+ #include <linux/../../net/l2tp/l2tp_core.h>
+ 
+ #include <nss_api_if.h>
+@@ -224,24 +225,19 @@ static struct nss_connmgr_l2tpv2_session
+ 	 */
+ 	data->l2tpv2.session.session_id = session->session_id;
+ 	data->l2tpv2.session.peer_session_id = session->peer_session_id;
+-	data->l2tpv2.session.offset = session->offset;
+ 	data->l2tpv2.session.hdr_len = session->hdr_len;
+ 	data->l2tpv2.session.reorder_timeout = session->reorder_timeout;
+ 	data->l2tpv2.session.recv_seq = session->recv_seq;
+ 	data->l2tpv2.session.send_seq = session->send_seq;
+ 
+-	nss_connmgr_l2tpv2_info("sess %u, peer=%u nr=%u ns=%u off=%u  hdr_len=%u timeout=%x"
++	nss_connmgr_l2tpv2_info("sess %u, peer=%u nr=%u ns=%u hdr_len=%u timeout=%x"
+ 	       " recv_seq=%x send_seq=%x\n",
+ 	       session->session_id,  session->peer_session_id, session->nr,
+ 	       session->ns,  session->offset, session->hdr_len,
+ 	       session->reorder_timeout, session->recv_seq,
+ 	       session->send_seq);
+ 
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 16, 0))
+-	data->l2tpv2.tunnel.udp_csum = tunnel->sock->sk_no_check;
+-#else
+ 	data->l2tpv2.tunnel.udp_csum = tunnel->sock->sk_no_check_tx;
+-#endif
+ 
+ 	inet = inet_sk(tunnel->sock);
+ 
+@@ -336,9 +332,6 @@ static void nss_connmgr_l2tpv2_exception
+ {
+ 	const struct iphdr *iph_outer, *iph_inner;
+ 	struct nss_connmgr_l2tpv2_session_data *ptr;
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-	struct hlist_node *node;
+-#endif
+ 	uint16_t *l2tp_hdr;
+ 	uint16_t l2tp_flags;
+ 	int l2tp_hdr_len = L2TP_HDR_MIN_LEN;
+@@ -354,9 +347,6 @@ static void nss_connmgr_l2tpv2_exception
+ 
+ 	rcu_read_lock();
+ 	hash_for_each_possible_rcu(l2tpv2_session_data_hash_table, ptr,
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-				   node,
+-#endif
+ 				   hash_list, dev->ifindex) {
+ 		if (ptr->dev == dev) {
+ 			tunnel_local_ip = ptr->data.ip.v4.saddr.s_addr;
+@@ -576,9 +566,6 @@ static int nss_connmgr_l2tpv2_dev_down(s
+ {
+ 	struct nss_connmgr_l2tpv2_session_data *ptr;
+ 	struct hlist_node *tmp;
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-	struct hlist_node *node;
+-#endif
+ 	struct nss_l2tpv2_msg  l2tpv2msg;
+ 	struct nss_l2tpv2_session_destroy_msg *l2tpv2cfg;
+ 	int if_number;
+@@ -602,9 +589,6 @@ static int nss_connmgr_l2tpv2_dev_down(s
+ 	}
+ 
+ 	hash_for_each_possible_safe(l2tpv2_session_data_hash_table, ptr,
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-				    node,
+-#endif
+ 				    tmp, hash_list, dev->ifindex) {
+ 		if (ptr->dev == dev) {
+ 			dev_put(dev);
+@@ -647,11 +631,7 @@ static int nss_connmgr_l2tpv2_dev_event(
+ 		unsigned long event, void  *dev)
+ {
+ 	struct net_device *netdev;
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 10, 0))
+-	netdev = (struct net_device *)dev;
+-#else
+ 	netdev = netdev_notifier_info_to_dev(dev);
+-#endif
+ 
+ 	switch (event) {
+ 	case NETDEV_UP:
+@@ -674,9 +654,6 @@ static int nss_connmgr_l2tpv2_dev_event(
+ int nss_connmgr_l2tpv2_get_data(struct net_device *dev, struct nss_connmgr_l2tpv2_data *data)
+ {
+ 	struct nss_connmgr_l2tpv2_session_data *ptr;
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-	struct hlist_node  *node;
+-#endif
+ 	if (!data) {
+ 		nss_connmgr_l2tpv2_info("nss_connmgr_l2tpv2_data ptr is null\n");
+ 		return -EINVAL;
+@@ -684,9 +661,6 @@ int nss_connmgr_l2tpv2_get_data(struct n
+ 
+ 	rcu_read_lock();
+ 	hash_for_each_possible_rcu(l2tpv2_session_data_hash_table, ptr,
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-				   node,
+-#endif
+ 				   hash_list, dev->ifindex) {
+ 		if (ptr->dev == dev) {
+ 			memcpy(data, &ptr->data, sizeof(struct nss_connmgr_l2tpv2_data));
+@@ -707,15 +681,9 @@ EXPORT_SYMBOL(nss_connmgr_l2tpv2_get_dat
+ int nss_connmgr_l2tpv2_does_connmgr_track(const struct net_device *dev)
+ {
+ 	struct nss_connmgr_l2tpv2_session_data *ptr;
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-	struct hlist_node  *node;
+-#endif
+ 
+ 	rcu_read_lock();
+ 	hash_for_each_possible_rcu(l2tpv2_session_data_hash_table, ptr,
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-				   node,
+-#endif
+ 				   hash_list, dev->ifindex) {
+ 		if (ptr->dev == dev) {
+ 			rcu_read_unlock();
+--- a/l2tp/l2tpv2/nss_connmgr_l2tpv2.h
++++ b/l2tp/l2tpv2/nss_connmgr_l2tpv2.h
+@@ -1,6 +1,6 @@
+ /*
+  **************************************************************************
+- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
++ * Copyright (c) 2015, 2020, The Linux Foundation. All rights reserved.
+  * Permission to use, copy, modify, and/or distribute this software for
+  * any purpose with or without fee is hereby granted, provided that the
+  * above copyright notice and this permission notice appear in all copies.
+@@ -27,13 +27,21 @@
+ #include <linux/in.h>
+ #include <linux/socket.h>
+ #include <linux/types.h>
++#include <linux/version.h>
+ 
+ #define L2TP_V_2 2
+ 
++#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4, 12, 0))
+ #define tunnel_hold(tunnel) atomic_inc(&tunnel->ref_count)
+ #define tunnel_put(tunnel)  atomic_dec(&tunnel->ref_count)
+ #define session_hold(session) atomic_inc(&session->ref_count)
+ #define session_put(session)  atomic_dec(&session->ref_count)
++#else
++#define tunnel_hold(tunnel) refcount_inc(&tunnel->ref_count)
++#define tunnel_put(tunnel)  refcount_dec(&tunnel->ref_count)
++#define session_hold(session) refcount_inc(&session->ref_count)
++#define session_put(session)  refcount_dec(&session->ref_count)
++#endif
+ 
+  /*
+   *		----------------------------------------------------------------------------------
+@@ -46,7 +54,6 @@
+   */
+ struct session_info {
+ 	u32 session_id, peer_session_id;	/* local & remote session id */
+-	u16 offset;				/* offset to data */
+ 	u16 hdr_len;				/* header length */
+ 	int reorder_timeout;			/* reorder timeout */
+ 	unsigned send_seq:1;			/* enable tx sequence number ?  */
+--- a/l2tp/l2tpv2/nss_l2tpv2_stats.c
++++ b/l2tp/l2tpv2/nss_l2tpv2_stats.c
+@@ -1,6 +1,6 @@
+ /*
+  **************************************************************************
+- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
++ * Copyright (c) 2015, 2020, The Linux Foundation. All rights reserved.
+  * Permission to use, copy, modify, and/or distribute this software for
+  * any purpose with or without fee is hereby granted, provided that the
+  * above copyright notice and this permission notice appear in all copies.
+@@ -21,6 +21,9 @@
+  */
+ 
+ #include <linux/types.h>
++#if IS_ENABLED(CONFIG_NF_FLOW_TABLE)
++#include <net/netfilter/nf_flow_table.h>
++#endif
+ #include <linux/ppp_channel.h>
+ #include <nss_api_if.h>
+ #include <nss_dynamic_interface.h>
+@@ -91,6 +94,8 @@ void nss_l2tpv2_update_dev_stats(struct
+ 
+ 	dev_hold(dev);
+ 
++	memset(&l2tp_stats, 0, sizeof(struct l2tp_stats));
++
+ 	/*
+ 	 * Get tunnel id
+ 	 */
+@@ -103,6 +108,7 @@ void nss_l2tpv2_update_dev_stats(struct
+ 	/*
+ 	 * Update tunnel & session stats
+ 	 */
++#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4, 12, 0))
+ 	tunnel = l2tp_tunnel_find(dev_net(dev), data.l2tpv2.tunnel.tunnel_id);
+ 	if (!tunnel) {
+ 		dev_put(dev);
+@@ -116,24 +122,21 @@ void nss_l2tpv2_update_dev_stats(struct
+ 		dev_put(dev);
+ 		return;
+ 	}
+-
+-	memset(&l2tp_stats, 0, sizeof(struct l2tp_stats));
+-
+ 	session_hold(session);
+-
+-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 8, 0))
+-	/* valid session found. Update stats */
+-	l2tp_stats.tx_packets = (u64)sync_stats->node_stats.tx_packets;
+-	l2tp_stats.tx_bytes = (u64)sync_stats->node_stats.tx_bytes;
+-	l2tp_stats.tx_errors = (u64)sync_stats->tx_errors;
+-
+-	l2tp_stats.rx_packets = (u64)sync_stats->node_stats.rx_packets;
+-	l2tp_stats.rx_bytes = (u64)sync_stats->node_stats.rx_bytes;
+-	l2tp_stats.rx_errors = (u64)sync_stats->rx_errors;
+-
+-	l2tp_stats.rx_seq_discards = (u64)sync_stats->rx_seq_discards;
+-	l2tp_stats.rx_oos_packets = (u64)sync_stats->rx_oos_packets;
+ #else
++	tunnel = l2tp_tunnel_get(dev_net(dev), data.l2tpv2.tunnel.tunnel_id);
++	if (!tunnel) {
++		dev_put(dev);
++		return;
++	}
++	session = l2tp_tunnel_get_session(tunnel, data.l2tpv2.session.session_id);
++	if (!session) {
++		tunnel_put(tunnel);
++		dev_put(dev);
++		return;
++	}
++#endif
++
+ 	atomic_long_set(&l2tp_stats.tx_packets, (long)sync_stats->node_stats.tx_packets);
+ 	atomic_long_set(&l2tp_stats.tx_bytes, (long)sync_stats->node_stats.tx_bytes);
+ 	atomic_long_set(&l2tp_stats.tx_errors, (long)sync_stats->tx_errors);
+@@ -145,7 +148,6 @@ void nss_l2tpv2_update_dev_stats(struct
+ 	atomic_long_set(&l2tp_stats.rx_seq_discards, (long)sync_stats->rx_seq_discards);
+ 	atomic_long_set(&l2tp_stats.rx_oos_packets, (long)(sync_stats->rx_oos_packets));
+ 
+-#endif
+ 	l2tp_stats_update(tunnel, session, &l2tp_stats);
+ 
+ 	session_put(session);

@@ -1,0 +1,73 @@
+--- a/bridge/Makefile
++++ b/bridge/Makefile
+@@ -11,3 +11,6 @@ ifeq ($(SoC),$(filter $(SoC),ipq807x ipq
+ ccflags-y += -DNSS_BRIDGE_MGR_PPE_SUPPORT
+ endif
+ 
++ifneq (,$(filter $(CONFIG_BONDING),y m))
++ccflags-y += -DBONDING_SUPPORT
++endif
+--- a/bridge/nss_bridge_mgr.c
++++ b/bridge/nss_bridge_mgr.c
+@@ -23,6 +23,7 @@
+ #include <linux/if_vlan.h>
+ #include <linux/of.h>
+ #include <linux/if_bridge.h>
++#include <net/bonding.h>
+ #if defined(NSS_BRIDGE_MGR_PPE_SUPPORT)
+ #include <ref/ref_vsi.h>
+ #include <nss_vlan_mgr.h>
+--- a/lag/nss_lag.c
++++ b/lag/nss_lag.c
+@@ -22,7 +22,7 @@
+ #include <linux/version.h>
+ #include <linux/types.h>
+ #include <linux/module.h>
+-#include <linux/if_bonding.h>
++#include <net/bonding.h>
+ #if defined(NSS_LAG_PPE_SUPPORT)
+ #include <nss_vlan_mgr.h>
+ #include <fal/fal_trunk.h>
+--- a/pppoe/Makefile
++++ b/pppoe/Makefile
+@@ -4,3 +4,7 @@ ccflags-y += -DNSS_PPPOE_DEBUG_LEVEL=0
+ ccflags-y += -Werror
+ obj-m += qca-nss-pppoe.o
+ qca-nss-pppoe-objs := nss_connmgr_pppoe.o
++
++ifneq (,$(filter $(CONFIG_BONDING),y m))
++ccflags-y += -DBONDING_SUPPORT
++endif
+--- a/pppoe/nss_connmgr_pppoe.c
++++ b/pppoe/nss_connmgr_pppoe.c
+@@ -28,6 +28,7 @@
+ #include <linux/if_pppox.h>
+ #include <net/ip.h>
+ #include <linux/if_bridge.h>
++#include <net/bonding.h>
+ #ifdef CONFIG_OF
+ #include <linux/of.h>
+ #endif
+--- a/vlan/Makefile
++++ b/vlan/Makefile
+@@ -9,4 +9,8 @@ ccflags-y += -DNSS_VLAN_MGR_PPE_SUPPORT
+ endif
+ 
+ ccflags-y += -DNSS_VLAN_MGR_DEBUG_LEVEL=0
+-ccflags-y += -Werror
+\ No newline at end of file
++ccflags-y += -Werror
++
++ifneq (,$(filter $(CONFIG_BONDING),y m))
++ccflags-y += -DBONDING_SUPPORT
++endif
+--- a/vlan/nss_vlan_mgr.c
++++ b/vlan/nss_vlan_mgr.c
+@@ -23,6 +23,7 @@
+ #include <linux/proc_fs.h>
+ #include <linux/sysctl.h>
+ #include <linux/module.h>
++#include <net/bonding.h>
+ #include <nss_api_if.h>
+ #ifdef NSS_VLAN_MGR_PPE_SUPPORT
+ #include <ref/ref_vsi.h>
