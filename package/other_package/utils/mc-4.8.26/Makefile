@@ -9,13 +9,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mc
-PKG_VERSION:=4.8.22
+PKG_VERSION:=4.8.26
 PKG_RELEASE:=3
 PKG_INSTALL:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.xz
 PKG_SOURCE_URL:=http://ftp.midnight-commander.org/
-PKG_HASH:=ee7868d7ba0498cf2cccefe107d7efee7f2571098806bba2aed5a159db801318
+PKG_HASH:=c6deadc50595f2d9a22dc6c299a9f28b393e358346ebf6ca444a8469dc166c27
 
 #PKG_FIXUP:=autoreconf
 
